@@ -1,17 +1,42 @@
+import { ApolloServer } from "@apollo/server";
+import { expressMiddleware } from "@apollo/server/express4";
+import { buildSubgraphSchema } from "@apollo/subgraph";
+import cors from "cors";
 import dotenv from "dotenv";
+import express from "express";
+import { readFileSync } from "fs";
+import gql from "graphql-tag";
+import { resolve } from "path";
 import app from "./app";
+import resolvers from "./graphql/resolvers";
+import { connectToDatabase } from "./utils/common/database";
 
 dotenv.config();
 
 const PORT = process.env.PORT || 5000;
 
-const start = async () => {
-  try {
-    await app.listen(PORT);
-    console.log(`🚀  server running at port: ${PORT}`);
-  } catch {
-    console.log("Not able to run server");
-  }
-};
+const typeDefsPath = resolve(__dirname, "graphql/schema.graphql");
+const typeDefs = gql(
+  readFileSync(typeDefsPath, {
+    encoding: "utf-8",
+  }),
+);
 
-start();
+const server = new ApolloServer({
+  schema: buildSubgraphSchema({ typeDefs, resolvers }),
+});
+
+async function startServer() {
+  await connectToDatabase();
+  await server.start();
+
+  app.use("/graphql", cors(), express.json(), expressMiddleware(server));
+
+  app.listen(PORT, () => {
+    console.log(`Server is running on port: ${PORT}`);
+  });
+}
+
+startServer().catch(error => {
+  console.error("Not able to run server --->", error.message);
+});
